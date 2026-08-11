@@ -1,15 +1,12 @@
 require('dotenv').config();
-
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-
 const prisma = require('./config/prisma');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
 
-// Middleware
 app.use(express.json());
 app.use(cookieParser());
 
@@ -20,12 +17,10 @@ app.use(
   })
 );
 
-// Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// PostgreSQL / Prisma test route
 app.get('/api/test-db', async (req, res) => {
   try {
     const users = await prisma.user.findMany();
@@ -36,16 +31,13 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
-// Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/plans', require('./routes/planRoutes'));
 app.use('/api/progress', require('./routes/progressRoutes'));
 
-// Error middleware
 app.use(notFound);
 app.use(errorHandler);
 
-// Start server
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
