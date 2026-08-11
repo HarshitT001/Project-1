@@ -4,9 +4,10 @@
   "description": "Backend API for MealMap — authentic Indian diet planner (auth + per-user plans + progress)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
+  "start": "node server.js",
+  "dev": "nodemon server.js",
+  "postinstall": "prisma generate"
+},
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
