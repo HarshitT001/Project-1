@@ -1,74 +1,50 @@
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const prisma = require('../config/prisma');
 const generateToken = require('../utils/generateToken');
 
-// @route  POST /api/auth/register
+// Register
 const registerUser = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
+
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
-    const exists = await User.findOne({ email });
+
+    const exists = await prisma.user.findUnique({
+      where: { email },
+    });
+
     if (exists) {
       return res.status(400).json({ message: 'An account with this email already exists' });
     }
-    const user = await User.create({ name, email, password });
-    generateToken(res, user._id);
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+      },
+    });
+
+    generateToken(res, user.id);
+
     res.status(201).json({
-      user: { id: user._id, name: user.name, email: user.email, profile: user.profile },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// @route  POST /api/auth/login
-const loginUser = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email }).select('+password');
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ message: 'Invalid email or password' });
-    }
-    generateToken(res, user._id);
-    res.json({
-      user: { id: user._id, name: user.name, email: user.email, profile: user.profile },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// @route  POST /api/auth/logout
-const logoutUser = (req, res) => {
-  res.cookie('token', '', { httpOnly: true, expires: new Date(0) });
-  res.json({ message: 'Logged out' });
-};
-
-// @route  GET /api/auth/me  (protected)
-const getMe = async (req, res) => {
-  res.json({
-    user: {
-      id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-      profile: req.user.profile,
-    },
-  });
-};
-
-// @route  PUT /api/auth/profile  (protected)
-const updateProfile = async (req, res, next) => {
-  try {
-    const { age, gender, height, weight, activityLevel, goal, dietType } = req.body;
-    req.user.profile = { age, gender, height, weight, activityLevel, goal, dietType };
-    await req.user.save();
-    res.json({
       user: {
-        id: req.user._id,
-        name: req.user.name,
-        email: req.user.email,
-        profile: req.user.profile,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        profile: {
+          age: user.age,
+          gender: user.gender,
+          height: user.height,
+          weight: user.weight,
+          activityLevel: user.activityLevel,
+          goal: user.goal,
+          dietType: user.dietType,
+        },
       },
     });
   } catch (err) {
@@ -76,4 +52,121 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { registerUser, loginUser, logoutUser, getMe, updateProfile };
+// Login
+const loginUser = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    generateToken(res, user.id);
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        profile: {
+          age: user.age,
+          gender: user.gender,
+          height: user.height,
+          weight: user.weight,
+          activityLevel: user.activityLevel,
+          goal: user.goal,
+          dietType: user.dietType,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Logout
+const logoutUser = (req, res) => {
+  res.cookie('token', '', {
+    httpOnly: true,
+    expires: new Date(0),
+  });
+
+  res.json({ message: 'Logged out' });
+};
+
+// Get current user
+const getMe = async (req, res) => {
+  res.json({
+    user: {
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+      profile: {
+        age: req.user.age,
+        gender: req.user.gender,
+        height: req.user.height,
+        weight: req.user.weight,
+        activityLevel: req.user.activityLevel,
+        goal: req.user.goal,
+        dietType: req.user.dietType,
+      },
+    },
+  });
+};
+
+// Update profile
+const updateProfile = async (req, res, next) => {
+  try {
+    const { age, gender, height, weight, activityLevel, goal, dietType } = req.body;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        age,
+        gender,
+        height,
+        weight,
+        activityLevel,
+        goal,
+        dietType,
+      },
+    });
+
+    res.json({
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        profile: {
+          age: updatedUser.age,
+          gender: updatedUser.gender,
+          height: updatedUser.height,
+          weight: updatedUser.weight,
+          activityLevel: updatedUser.activityLevel,
+          goal: updatedUser.goal,
+          dietType: updatedUser.dietType,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getMe,
+  updateProfile,
+};
