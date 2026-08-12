@@ -529,10 +529,19 @@ footer .fine{color:var(--muted);font-size:0.82rem;}
       <form class="form-card" id="signupForm" style="position:static;display:none;">
         <div class="field"><label for="suName">Name</label><input type="text" id="suName" required></div>
         <div class="field"><label for="suEmail">Email</label><input type="email" id="suEmail" required></div>
+        <div class="field"><label for="suPhone">Phone number</label><input type="tel" id="suPhone" placeholder="+91 98765 43210" required></div>
         <div class="field"><label for="suPassword">Password</label><input type="password" id="suPassword" minlength="6" required></div>
         <button type="submit" class="generate-btn">Create account</button>
         <div class="confirm-box" id="signupError" style="background:var(--paprika);"></div>
         <p style="margin-top:14px;font-size:0.88rem;color:var(--muted);text-align:center;">Already have an account? <a href="#" id="showLogin" class="auth-link">Log in</a></p>
+      </form>
+
+      <form class="form-card" id="otpForm" style="position:static;display:none;">
+        <div class="field"><label for="otpEmail">Email</label><input type="email" id="otpEmail" readonly></div>
+        <div class="field"><label for="otpCode">6-digit OTP sent to your phone</label><input type="text" id="otpCode" inputmode="numeric" maxlength="6" required></div>
+        <button type="submit" class="generate-btn">Verify & continue</button>
+        <div class="confirm-box" id="otpError" style="background:var(--paprika);"></div>
+        <p style="margin-top:14px;font-size:0.88rem;color:var(--muted);text-align:center;">Didn't get it? <a href="#" id="resendOtpLink" class="auth-link">Resend OTP</a></p>
       </form>
 
       <p style="margin-top:18px;font-size:0.78rem;color:var(--muted);text-align:center;">
@@ -564,7 +573,12 @@ async function apiFetch(path, opts={}){
     ...opts
   });
   const data = await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(data.message || 'Something went wrong');
+  if(!res.ok){
+    const err = new Error(data.message || 'Something went wrong');
+    err.needsVerification = !!data.needsVerification;
+    err.email = data.email;
+    throw err;
+  }
   return data;
 }
 
@@ -598,35 +612,46 @@ async function doLogout(){
   goToPage('home');
 }
 
-document.getElementById('showSignup').addEventListener('click',(e)=>{
-  e.preventDefault();
-  document.getElementById('loginForm').style.display='none';
-  document.getElementById('signupForm').style.display='block';
-  document.getElementById('authTitle').textContent='Create your MealMap account';
-  document.getElementById('authSub').textContent='One account, all your saved plans and progress.';
-});
-document.getElementById('showLogin').addEventListener('click',(e)=>{
-  e.preventDefault();
-  document.getElementById('signupForm').style.display='none';
-  document.getElementById('loginForm').style.display='block';
-  document.getElementById('authTitle').textContent='Log in to MealMap';
-  document.getElementById('authSub').textContent='Save your generated plans and track your progress across visits.';
-});
+function showAuthForm(which){
+  document.getElementById('loginForm').style.display = which==='login' ? 'block' : 'none';
+  document.getElementById('signupForm').style.display = which==='signup' ? 'block' : 'none';
+  document.getElementById('otpForm').style.display = which==='otp' ? 'block' : 'none';
+  const titles = {
+    login: ['Log in to MealMap', 'Save your generated plans and track your progress across visits.'],
+    signup: ['Create your MealMap account', 'One account, all your saved plans and progress.'],
+    otp: ['Verify your phone', 'Enter the OTP we sent to your phone number to activate your account.'],
+  };
+  document.getElementById('authTitle').textContent = titles[which][0];
+  document.getElementById('authSub').textContent = titles[which][1];
+}
+
+function showOtpStep(email){
+  document.getElementById('otpEmail').value = email;
+  showAuthForm('otp');
+}
+
+document.getElementById('showSignup').addEventListener('click',(e)=>{ e.preventDefault(); showAuthForm('signup'); });
+document.getElementById('showLogin').addEventListener('click',(e)=>{ e.preventDefault(); showAuthForm('login'); });
 
 document.getElementById('loginForm').addEventListener('submit', async function(e){
   e.preventDefault();
   const errBox = document.getElementById('loginError');
   errBox.classList.remove('show');
+  const email = document.getElementById('loginEmail').value;
   try{
     const data = await apiFetch('/auth/login', {method:'POST', body: JSON.stringify({
-      email: document.getElementById('loginEmail').value,
+      email,
       password: document.getElementById('loginPassword').value
     })});
     setUser(data.user);
     goToPage('home');
   }catch(err){
-    errBox.textContent = err.message;
-    errBox.classList.add('show');
+    if(err.needsVerification){
+      showOtpStep(err.email || email);
+    } else {
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }
   }
 });
 
@@ -638,13 +663,42 @@ document.getElementById('signupForm').addEventListener('submit', async function(
     const data = await apiFetch('/auth/register', {method:'POST', body: JSON.stringify({
       name: document.getElementById('suName').value,
       email: document.getElementById('suEmail').value,
+      phone: document.getElementById('suPhone').value,
       password: document.getElementById('suPassword').value
+    })});
+    showOtpStep(data.email);
+  }catch(err){
+    errBox.textContent = err.message;
+    errBox.classList.add('show');
+  }
+});
+
+document.getElementById('otpForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const errBox = document.getElementById('otpError');
+  errBox.classList.remove('show');
+  try{
+    const data = await apiFetch('/auth/verify-otp', {method:'POST', body: JSON.stringify({
+      email: document.getElementById('otpEmail').value,
+      otp: document.getElementById('otpCode').value
     })});
     setUser(data.user);
     goToPage('home');
   }catch(err){
     errBox.textContent = err.message;
     errBox.classList.add('show');
+  }
+});
+
+document.getElementById('resendOtpLink').addEventListener('click', async (e)=>{
+  e.preventDefault();
+  try{
+    const data = await apiFetch('/auth/resend-otp', {method:'POST', body: JSON.stringify({
+      email: document.getElementById('otpEmail').value
+    })});
+    alert(data.message || 'A new OTP has been sent.');
+  }catch(err){
+    alert(err.message);
   }
 });
 
@@ -720,12 +774,22 @@ function goToPage(name){
   window.scrollTo({top:0,behavior:'smooth'});
   document.getElementById('navLinks').classList.remove('open');
 }
+const GATED_PAGES = ['planner','progress']; // require a logged-in, phone-verified user
+
 document.querySelectorAll('nav.links button').forEach(b=>b.addEventListener('click',()=>{
+  if(GATED_PAGES.includes(b.dataset.page) && !currentUser){
+    goToPage('auth');
+    return;
+  }
   goToPage(b.dataset.page);
   if(b.dataset.page==='progress') loadProgressPage();
 }));
 document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',(e)=>{
   e.preventDefault();
+  if(GATED_PAGES.includes(b.dataset.nav) && !currentUser){
+    goToPage('auth');
+    return;
+  }
   goToPage(b.dataset.nav);
   if(b.dataset.nav==='progress') loadProgressPage();
 }));
@@ -790,6 +854,7 @@ function pickMealForSlot(slot, targetCal, dietTags, used){
 
 document.getElementById('plannerForm').addEventListener('submit', function(e){
   e.preventDefault();
+  if(!currentUser){ goToPage('auth'); return; }
   const age = parseFloat(document.getElementById('age').value);
   const gender = document.getElementById('gender').value;
   const height = parseFloat(document.getElementById('height').value);

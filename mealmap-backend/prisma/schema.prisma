@@ -11,6 +11,14 @@ model User {
   name          String
   email         String   @unique
   password      String
+
+  // Phone verification — a user cannot use any feature until phoneVerified is true
+  phone         String?  @unique
+  phoneVerified Boolean  @default(false)
+  otpCode       String?
+  otpExpiresAt  DateTime?
+  otpAttempts   Int      @default(0)
+
   age           Int?
   gender        String?
   height        Float?
@@ -18,6 +26,42 @@ model User {
   activityLevel Float?
   goal          String?
   dietType      String?
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  plans         DietPlan[]
+  logs          ProgressLog[]
+}
+
+model DietPlan {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  targetCalories Int?
+  tdee           Int?
+  goal           String?
+  dietType       String?
+  meals          Json
+  totals         Json
+
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+}
+
+model ProgressLog {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date             DateTime @default(now())
+  weight           Float?
+  caloriesConsumed Int?
+  note             String?
+
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
 }
