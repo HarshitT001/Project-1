@@ -42,3 +42,13 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`MealMap API running on port ${PORT}`));
+
+app.use(
+  cors({
+    origin: [
+      process.env.CLIENT_URL,
+      'https://splendid-youtiao-104ba1.netlify.app'
+    ],
+    credentials: true,
+  })
+);
